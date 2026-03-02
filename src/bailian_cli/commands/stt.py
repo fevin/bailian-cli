@@ -12,7 +12,6 @@ from bailian_cli.output import error, success
 
 logger = logging.getLogger(__name__)
 
-# Paraformer 文件转写（异步任务）
 FILE_TRANSCRIPTION_PATH = "/api/v1/services/audio/asr/transcription"
 TASK_PATH = "/api/v1/tasks/{task_id}"
 
@@ -21,12 +20,7 @@ TASK_PATH = "/api/v1/tasks/{task_id}"
 @click.option("-m", "--model", default=DEFAULT_STT_MODEL, show_default=True, help="语音识别模型")
 @click.option("--audio", required=True, help="音频文件路径或 URL")
 @click.option("--language", default=None, help="语言提示（如 zh, en）")
-@click.option(
-    "--format",
-    "audio_format",
-    default=None,
-    help="音频格式提示（如 wav, mp3, pcm）",
-)
+@click.option("--format", "audio_format", default=None, help="音频格式提示（如 wav, mp3, pcm）")
 @click.option("--sample-rate", type=int, default=None, help="采样率提示")
 def stt(
     model: str,
@@ -69,7 +63,7 @@ def stt(
 
             task_id = data.get("output", {}).get("task_id")
             if not task_id:
-                error("Failed to get task_id", code="STT_SUBMIT_ERROR")
+                error("Failed to get task_id", code="STT_SUBMIT_ERROR", retryable=True)
 
             logger.info("STT task submitted, task_id=%s", task_id)
             result = _poll_task(client, task_id)
@@ -77,9 +71,12 @@ def stt(
 
     except SystemExit:
         raise
+    except FileNotFoundError as e:
+        error(str(e), code="FILE_NOT_FOUND", retryable=False)
     except Exception as e:
+        retryable = "timeout" in str(e).lower() or "connection" in str(e).lower()
         logger.exception("STT request failed")
-        error(str(e), code="STT_ERROR")
+        error(str(e), code="STT_ERROR", retryable=retryable)
 
 
 def _resolve_audio(audio: str, api_key: str) -> str:
@@ -89,7 +86,7 @@ def _resolve_audio(audio: str, api_key: str) -> str:
 
     path = Path(audio)
     if not path.exists():
-        error(f"Audio file not found: {audio}", code="FILE_NOT_FOUND")
+        raise FileNotFoundError(f"Audio file not found: {audio}")
 
     return _upload_file(path, api_key)
 
@@ -100,7 +97,6 @@ def _upload_file(path: Path, api_key: str) -> str:
     upload_url = f"{DASHSCOPE_API_BASE}/api/v1/uploads"
 
     with httpx.Client(timeout=120.0) as client:
-        # 获取上传凭证
         resp = client.post(
             upload_url,
             headers={
@@ -116,8 +112,9 @@ def _upload_file(path: Path, api_key: str) -> str:
         resp.raise_for_status()
         upload_info = resp.json()
 
-        oss_url = upload_info.get("data", {}).get("upload_url")
-        file_url = upload_info.get("data", {}).get("oss_url") or upload_info.get("data", {}).get("file_url")
+        data = upload_info.get("data", {})
+        oss_url = data.get("upload_url")
+        file_url = data.get("oss_url") or data.get("file_url")
 
         if oss_url:
             with open(path, "rb") as f:
@@ -163,9 +160,9 @@ def _poll_task(client: httpx.Client, task_id: str, max_wait: int = 600) -> dict:
 
         if status in ("FAILED", "CANCELED"):
             msg = data.get("output", {}).get("message", "Unknown error")
-            error(f"Task {status}: {msg}", code="STT_TASK_FAILED", task_id=task_id)
+            error(f"Task {status}: {msg}", code="STT_TASK_FAILED", retryable=False, task_id=task_id)
 
         time.sleep(interval)
         elapsed += interval
 
-    error(f"Task timed out after {max_wait}s", code="STT_TIMEOUT", task_id=task_id)
+    error(f"Task timed out after {max_wait}s", code="STT_TIMEOUT", retryable=True, task_id=task_id)

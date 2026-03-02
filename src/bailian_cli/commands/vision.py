@@ -66,9 +66,12 @@ def vision(
         )
     except SystemExit:
         raise
+    except FileNotFoundError as e:
+        error(str(e), code="FILE_NOT_FOUND", retryable=False)
     except Exception as e:
+        retryable = "timeout" in str(e).lower() or "connection" in str(e).lower()
         logger.exception("Vision request failed")
-        error(str(e), code="VISION_ERROR")
+        error(str(e), code="VISION_ERROR", retryable=retryable)
 
 
 def _build_content(message: str, images: tuple[str, ...]) -> list[dict]:
@@ -87,7 +90,7 @@ def _image_part(image_source: str) -> dict:
 
     path = Path(image_source)
     if not path.exists():
-        error(f"Image file not found: {image_source}", code="FILE_NOT_FOUND")
+        raise FileNotFoundError(f"Image file not found: {image_source}")
 
     mime_type = mimetypes.guess_type(str(path))[0] or "image/png"
     with open(path, "rb") as f:

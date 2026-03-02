@@ -37,12 +37,13 @@ def embedding(
             embeddings.append({"index": item.index, "embedding": item.embedding})
 
         success(
-            {"embeddings": embeddings},
+            {"embeddings": embeddings, "count": len(embeddings)},
             model=response.model,
             usage={"total_tokens": response.usage.total_tokens},
         )
     except SystemExit:
         raise
     except Exception as e:
+        retryable = "timeout" in str(e).lower() or "429" in str(e)
         logger.exception("Embedding request failed")
-        error(str(e), code="EMBEDDING_ERROR")
+        error(str(e), code="EMBEDDING_ERROR", retryable=retryable)

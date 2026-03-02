@@ -1,6 +1,8 @@
 """配置管理：环境变量读取、默认值"""
 
+import json
 import os
+import sys
 
 # 百炼平台 API 基础地址
 DASHSCOPE_BASE_URL = os.getenv(
@@ -14,8 +16,6 @@ DASHSCOPE_API_BASE = os.getenv(
     "https://dashscope.aliyuncs.com",
 )
 
-DASHSCOPE_API_KEY = os.getenv("DASHSCOPE_API_KEY", "")
-
 # 各类模型的默认值
 DEFAULT_CHAT_MODEL = "qwen-plus"
 DEFAULT_VISION_MODEL = "qwen-vl-max"
@@ -27,11 +27,21 @@ DEFAULT_EMBEDDING_MODEL = "text-embedding-v3"
 
 
 def get_api_key() -> str:
-    """获取 API Key，未配置时抛出明确错误"""
+    """获取 API Key，未配置时输出结构化错误"""
     key = os.getenv("DASHSCOPE_API_KEY", "")
     if not key:
-        raise SystemExit(
-            "Error: DASHSCOPE_API_KEY environment variable is not set.\n"
-            "Please set it: export DASHSCOPE_API_KEY='your-api-key'"
+        print(
+            json.dumps(
+                {
+                    "status": "error",
+                    "code": "API_KEY_MISSING",
+                    "message": "DASHSCOPE_API_KEY environment variable is not set",
+                    "retryable": False,
+                    "hint": "export DASHSCOPE_API_KEY='your-api-key'",
+                },
+                ensure_ascii=False,
+                indent=2,
+            )
         )
+        sys.exit(1)
     return key

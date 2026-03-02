@@ -11,12 +11,12 @@ from bailian_cli.output import error, success
 
 logger = logging.getLogger(__name__)
 
-# DashScope 异步任务 API 路径
 SUBMIT_PATH = "/api/v1/services/aigc/text2image/image-synthesis"
 TASK_PATH = "/api/v1/tasks/{task_id}"
-
-# 图像生成同步 API（multimodal-generation，适用于 wan2.6 等新模型）
 SYNC_PATH = "/api/v1/services/aigc/multimodal-generation/generation"
+
+# 使用同步接口的模型前缀
+_SYNC_MODEL_PREFIXES = ("wan2.6", "wan2.5", "qwen-image")
 
 
 @click.command()
@@ -26,13 +26,6 @@ SYNC_PATH = "/api/v1/services/aigc/multimodal-generation/generation"
 @click.option("--size", default="1024*1024", show_default=True, help="图像尺寸（如 1024*1024）")
 @click.option("--n", "num", type=int, default=1, show_default=True, help="生成图片数量")
 @click.option("--seed", type=int, default=None, help="随机种子")
-@click.option(
-    "--mode",
-    type=click.Choice(["async", "sync"]),
-    default="async",
-    show_default=True,
-    help="调用模式: async=异步任务 sync=同步（wan2.6 等新模型）",
-)
 def image(
     model: str,
     prompt: str,
@@ -40,19 +33,20 @@ def image(
     size: str,
     num: int,
     seed: int | None,
-    mode: str,
 ):
     """图像生成 - 根据文本描述生成图像"""
     try:
-        if mode == "sync":
+        use_sync = any(model.startswith(p) for p in _SYNC_MODEL_PREFIXES)
+        if use_sync:
             _sync_generate(model, prompt, negative_prompt, size)
         else:
             _async_generate(model, prompt, negative_prompt, size, num, seed)
     except SystemExit:
         raise
     except Exception as e:
+        retryable = "timeout" in str(e).lower() or "connection" in str(e).lower()
         logger.exception("Image generation failed")
-        error(str(e), code="IMAGE_ERROR")
+        error(str(e), code="IMAGE_ERROR", retryable=retryable)
 
 
 def _sync_generate(model: str, prompt: str, negative_prompt: str | None, size: str) -> None:
@@ -74,17 +68,15 @@ def _sync_generate(model: str, prompt: str, negative_prompt: str | None, size: s
     resp.raise_for_status()
     data = resp.json()
 
+    images = []
     if data.get("output", {}).get("choices"):
-        choices = data["output"]["choices"]
-        images = []
-        for c in choices:
+        for c in data["output"]["choices"]:
             msg = c.get("message", {})
             for item in msg.get("content", []):
                 if "image" in item:
                     images.append(item["image"])
-        success({"images": images}, model=model, raw_output=data.get("output"))
-    else:
-        success(data.get("output", data), model=model)
+
+    success({"images": images, "count": len(images)}, model=model)
 
 
 def _async_generate(
@@ -102,7 +94,7 @@ def _async_generate(
     if seed is not None:
         parameters["seed"] = seed
 
-    payload = {
+    payload: dict = {
         "model": model,
         "input": {"prompt": prompt},
         "parameters": parameters,
@@ -121,7 +113,7 @@ def _async_generate(
 
     task_id = data.get("output", {}).get("task_id")
     if not task_id:
-        error("Failed to get task_id from response", code="IMAGE_SUBMIT_ERROR")
+        error("Failed to get task_id from response", code="IMAGE_SUBMIT_ERROR", retryable=True)
 
     logger.info("Task submitted, task_id=%s, polling...", task_id)
     result = _poll_task(client, task_id)
@@ -144,25 +136,14 @@ def _poll_task(client, task_id: str, max_wait: int = 300) -> dict:
 
         if status == "SUCCEEDED":
             output = data.get("output", {})
-            images = []
-            for r in output.get("results", []):
-                if r.get("url"):
-                    images.append(r["url"])
-            return {"task_id": task_id, "images": images, "task_status": status}
+            images = [r["url"] for r in output.get("results", []) if r.get("url")]
+            return {"task_id": task_id, "images": images, "count": len(images)}
 
         if status in ("FAILED", "CANCELED"):
             msg = data.get("output", {}).get("message", "Unknown error")
-            error(
-                f"Task {status}: {msg}",
-                code="IMAGE_TASK_FAILED",
-                task_id=task_id,
-            )
+            error(f"Task {status}: {msg}", code="IMAGE_TASK_FAILED", retryable=False, task_id=task_id)
 
         time.sleep(interval)
         elapsed += interval
 
-    error(
-        f"Task timed out after {max_wait}s",
-        code="IMAGE_TIMEOUT",
-        task_id=task_id,
-    )
+    error(f"Task timed out after {max_wait}s", code="IMAGE_TIMEOUT", retryable=True, task_id=task_id)

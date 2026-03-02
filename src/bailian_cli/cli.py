@@ -1,4 +1,4 @@
-"""CLI 入口：注册所有子命令"""
+"""CLI 入口：注册所有子命令，设置全局上下文"""
 
 import logging
 import sys
@@ -12,9 +12,18 @@ from bailian_cli.commands.image import image
 from bailian_cli.commands.stt import stt
 from bailian_cli.commands.tts import tts
 from bailian_cli.commands.vision import vision
+from bailian_cli.output import set_command
 
 
-@click.group()
+class CommandTracker(click.Group):
+    """自动追踪当前执行的子命令名称，注入到输出模块"""
+
+    def invoke(self, ctx):
+        # click.Group.invoke 会解析子命令，这里在实际执行前拦截
+        return super().invoke(ctx)
+
+
+@click.group(cls=CommandTracker)
 @click.version_option(version=__version__, prog_name="bailian")
 @click.option(
     "-v",
@@ -28,6 +37,7 @@ def main(verbose: int):
     \b
     通过命令行调用百炼平台的各类 AI 模型，输出结构化 JSON 结果。
     支持文本对话、视觉理解、图像生成、语音合成、语音识别、文本向量化。
+    设计为 AI Agent 工具调用场景，所有输出均为结构化 JSON。
 
     \b
     环境变量:
@@ -47,12 +57,24 @@ def main(verbose: int):
     )
 
 
-main.add_command(chat)
-main.add_command(vision)
-main.add_command(image)
-main.add_command(tts)
-main.add_command(stt)
-main.add_command(embedding)
+def _register_with_tracking(group: click.Group, cmd: click.Command) -> None:
+    """注册子命令并添加命令名追踪"""
+    original_invoke = cmd.invoke
+
+    def tracked_invoke(ctx):
+        set_command(cmd.name)
+        return original_invoke(ctx)
+
+    cmd.invoke = tracked_invoke
+    group.add_command(cmd)
+
+
+_register_with_tracking(main, chat)
+_register_with_tracking(main, vision)
+_register_with_tracking(main, image)
+_register_with_tracking(main, tts)
+_register_with_tracking(main, stt)
+_register_with_tracking(main, embedding)
 
 
 if __name__ == "__main__":

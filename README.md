@@ -4,6 +4,16 @@
 
 通过命令行调用百炼平台的各类 AI 模型，输出结构化 JSON 结果，支持文本对话、视觉理解、图像生成、语音合成、语音识别、文本向量化。
 
+## 设计理念
+
+本工具专为 **AI Agent 工具调用**场景设计：
+
+- **结构化 JSON 输出** — 所有命令的 stdout 均为可解析的 JSON（包括错误）
+- **`command` 标识** — 输出中包含命令名，Agent 可关联请求与响应
+- **`retryable` 提示** — 错误信息标注是否可重试，Agent 可据此决策
+- **文件/管道输入** — 复杂多轮对话通过 `--input-file` 传入，避免 shell 转义
+- **无二进制污染** — TTS 等音频输出必须指定文件路径，stdout 保持纯 JSON
+
 ## 快速开始
 
 ### 安装
@@ -43,20 +53,38 @@ API Key 从 [百炼控制台 - 密钥管理](https://bailian.console.aliyun.com/
 ### 文本对话
 
 ```bash
-# 基本对话
+# 简单对话
 bailian chat --message "什么是量子计算？"
 
 # 指定模型和系统提示词
-bailian chat -m qwen-max --system "你是一个翻译助手" --message "Translate to English: 你好"
-
-# 流式输出
-bailian chat --message "写一首诗" --stream
-
-# 多轮对话
-bailian chat --messages-json '[{"role":"user","content":"hi"},{"role":"assistant","content":"hello"},{"role":"user","content":"how are you?"}]'
+bailian chat -m qwen-max --system "你是一个翻译助手" --message "Translate: 你好"
 
 # 参数控制
 bailian chat --message "hello" --temperature 0.7 --max-tokens 1024
+
+# 多轮对话 —— 通过文件输入（推荐，避免 shell 转义问题）
+cat > /tmp/messages.json << 'EOF'
+[
+  {"role": "user", "content": "hi"},
+  {"role": "assistant", "content": "hello"},
+  {"role": "user", "content": "how are you?"}
+]
+EOF
+bailian chat --input-file /tmp/messages.json
+
+# 多轮对话 —— 对象格式（可包含 system 提示词）
+cat > /tmp/conversation.json << 'EOF'
+{
+  "system": "You are a helpful translator",
+  "messages": [
+    {"role": "user", "content": "translate: hello world"}
+  ]
+}
+EOF
+bailian chat --input-file /tmp/conversation.json
+
+# 多轮对话 —— 通过管道输入
+echo '[{"role":"user","content":"hi"}]' | bailian chat --input-file -
 ```
 
 ### 视觉理解
@@ -75,11 +103,11 @@ bailian vision --message "这两张图有什么区别？" --image img1.jpg --ima
 ### 图像生成
 
 ```bash
-# 异步模式（经典模型）
+# 生成图片（模型自动选择同步/异步模式）
 bailian image --prompt "一只在月光下奔跑的白猫"
 
-# 同步模式（新模型 wan2.6）
-bailian image -m wan2.6-image --prompt "futuristic city" --mode sync
+# 指定新模型（wan2.6 自动使用同步模式）
+bailian image -m wan2.6-image --prompt "futuristic city"
 
 # 自定义尺寸
 bailian image --prompt "mountain landscape" --size "1280*720"
@@ -88,10 +116,10 @@ bailian image --prompt "mountain landscape" --size "1280*720"
 ### 语音合成
 
 ```bash
-# 基本语音合成
+# 语音合成（必须指定输出文件）
 bailian tts --text "你好，欢迎使用百炼平台" --output hello.mp3
 
-# 指定音色
+# 指定音色和格式
 bailian tts --text "Hello world" --voice longxiaochun --format wav --output hello.wav
 ```
 
@@ -120,12 +148,19 @@ bailian embedding --text "hello" --dimensions 512
 
 ## 输出格式
 
-所有命令（流式输出除外）均返回统一的 JSON 结构：
+所有命令均返回统一的 JSON 结构到 stdout：
+
+### 成功
 
 ```json
 {
   "status": "success",
-  "data": { ... },
+  "command": "chat",
+  "data": {
+    "content": "量子计算是...",
+    "role": "assistant",
+    "finish_reason": "stop"
+  },
   "model": "qwen-plus",
   "usage": {
     "prompt_tokens": 10,
@@ -135,15 +170,24 @@ bailian embedding --text "hello" --dimensions 512
 }
 ```
 
-错误输出（stderr）：
+### 错误
 
 ```json
 {
   "status": "error",
+  "command": "chat",
   "code": "CHAT_ERROR",
-  "message": "error description"
+  "message": "Connection timeout",
+  "retryable": true
 }
 ```
+
+**`retryable` 字段**：
+
+| 值 | 含义 | Agent 策略 |
+|----|------|-----------|
+| `true` | 网络超时、限流等临时错误 | 可以重试 |
+| `false` | 参数错误、鉴权失败等 | 换策略或报告 |
 
 ## 环境变量
 
@@ -156,20 +200,11 @@ bailian embedding --text "hello" --dimensions 512
 ## 开发
 
 ```bash
-# 安装开发依赖
-make dev
-
-# 代码检查
-make lint
-
-# 代码格式化
-make format
-
-# 运行测试
-make test
-
-# 构建
-make build
+make dev       # 安装开发依赖
+make lint      # 代码检查
+make format    # 代码格式化
+make test      # 运行测试
+make build     # 构建发布包
 ```
 
 ## License
