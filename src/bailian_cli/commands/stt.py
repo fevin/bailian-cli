@@ -1,9 +1,14 @@
-"""语音识别命令：调用 dashscope Transcription SDK"""
+"""语音识别命令：调用 dashscope Transcription SDK
+
+Agent 需要直接拿到识别文本，不应再下载中间 URL。
+SDK 返回 transcription_url 时自动下载并提取 text。
+"""
 
 import logging
 from pathlib import Path
 
 import click
+import httpx
 from dashscope import Transcription
 
 from bailian_cli.config import DEFAULT_STT_MODEL, get_api_key
@@ -52,18 +57,7 @@ def stt(
             task_id = output.get("task_id", "")
             results = output.get("results", [])
 
-            transcriptions = []
-            for r in results:
-                if r.get("transcription_url"):
-                    transcriptions.append(
-                        {
-                            "file_url": r.get("file_url"),
-                            "transcription_url": r["transcription_url"],
-                        }
-                    )
-                elif r.get("text"):
-                    transcriptions.append({"text": r["text"]})
-
+            transcriptions = _resolve_transcriptions(results)
             success(
                 {"task_id": task_id, "transcriptions": transcriptions},
                 model=model,
@@ -81,6 +75,48 @@ def stt(
     except Exception as e:
         logger.exception("STT request failed")
         error(str(e), code="STT_ERROR", retryable=_is_retryable(str(e)))
+
+
+def _resolve_transcriptions(results: list[dict]) -> list[dict]:
+    """解析转写结果，自动下载 transcription_url 提取文本"""
+    transcriptions = []
+    for r in results:
+        if r.get("transcription_url"):
+            detail = _fetch_transcription(r["transcription_url"])
+            if detail:
+                transcriptions.append(detail)
+            else:
+                transcriptions.append(
+                    {
+                        "file_url": r.get("file_url"),
+                        "transcription_url": r["transcription_url"],
+                    }
+                )
+        elif r.get("text"):
+            transcriptions.append({"text": r["text"]})
+    return transcriptions
+
+
+def _fetch_transcription(url: str) -> dict | None:
+    """下载转写结果 JSON，提取 Agent 需要的关键信息"""
+    try:
+        resp = httpx.get(url, timeout=30.0)
+        resp.raise_for_status()
+        data = resp.json()
+
+        texts = []
+        for transcript in data.get("transcripts", []):
+            if transcript.get("text"):
+                texts.append(transcript["text"])
+
+        return {
+            "text": " ".join(texts),
+            "file_url": data.get("file_url"),
+            "duration_ms": data.get("properties", {}).get("original_duration_in_milliseconds"),
+        }
+    except Exception:
+        logger.warning("Failed to fetch transcription from %s", url)
+        return None
 
 
 def _is_retryable(msg: str) -> bool:
