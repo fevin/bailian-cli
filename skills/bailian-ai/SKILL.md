@@ -45,9 +45,15 @@ triggers:
 
 通过 `bailian` CLI 调用阿里云百炼平台 AI 模型，所有命令输出结构化 JSON。
 
+## 安装此技能
+
+```bash
+npx skills add fevin/bailian-cli
+```
+
 ## 前置条件
 
-运行 `scripts/install-check.sh` 确认环境就绪。未安装时执行：
+运行 `scripts/install-check.sh` 确认 CLI 环境就绪。未安装 CLI 时执行：
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/fevin/bailian-cli/main/install.sh | bash

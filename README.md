@@ -224,15 +224,22 @@ bailian chat --message "hello"
 
 ## Agent Skills
 
-本项目同时提供 [OpenClaw Agent Skills](https://docs.openclaw.ai/skills) 技能包，可直接集成到支持 Agent Skills 的 AI 助手中。
+本项目同时提供 [Agent Skills](https://add-skill.org/) 技能包，可直接集成到 Cursor、Claude Code、OpenCode、Codex 等 AI 助手中。
 
 ### 安装技能
 
 ```bash
-pnpm dlx add-skill https://github.com/fevin/bailian-cli/tree/HEAD/skills/bailian-ai
+# 安装（自动检测当前 Agent 环境）
+npx skills add fevin/bailian-cli
+
+# 查看可用技能
+npx skills add fevin/bailian-cli --list
+
+# 全局安装（所有项目共享）
+npx skills add fevin/bailian-cli -g
 ```
 
-或手动复制到工作区：
+手动安装：
 
 ```bash
 cp -r skills/bailian-ai /workspace/skills/
