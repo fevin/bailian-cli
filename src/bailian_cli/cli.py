@@ -12,6 +12,7 @@ from bailian_cli.commands.image import image
 from bailian_cli.commands.stt import stt
 from bailian_cli.commands.tts import tts
 from bailian_cli.commands.vision import vision
+from bailian_cli.config import init_base_url
 from bailian_cli.output import set_command
 
 
@@ -19,7 +20,6 @@ class CommandTracker(click.Group):
     """自动追踪当前执行的子命令名称，注入到输出模块"""
 
     def invoke(self, ctx):
-        # click.Group.invoke 会解析子命令，这里在实际执行前拦截
         return super().invoke(ctx)
 
 
@@ -31,7 +31,13 @@ class CommandTracker(click.Group):
     count=True,
     help="日志详细程度（-v=INFO, -vv=DEBUG）",
 )
-def main(verbose: int):
+@click.option(
+    "--base-url",
+    default=None,
+    envvar="DASHSCOPE_BASE_URL",
+    help="百炼平台 API 地址（默认 https://dashscope.aliyuncs.com）",
+)
+def main(verbose: int, base_url: str | None):
     """百炼 CLI - 阿里云百炼平台命令行工具
 
     \b
@@ -55,6 +61,8 @@ def main(verbose: int):
         format="%(asctime)s %(levelname)s %(name)s: %(message)s",
         stream=sys.stderr,
     )
+
+    init_base_url(base_url)
 
 
 def _register_with_tracking(group: click.Group, cmd: click.Command) -> None:

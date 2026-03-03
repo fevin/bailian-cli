@@ -1,20 +1,14 @@
-"""配置管理：环境变量读取、默认值"""
+"""配置管理：环境变量读取、默认值、全局状态"""
 
 import json
 import os
 import sys
 
-# 百炼平台 API 基础地址
-DASHSCOPE_BASE_URL = os.getenv(
-    "DASHSCOPE_BASE_URL",
-    "https://dashscope.aliyuncs.com/compatible-mode/v1",
-)
+# 百炼平台默认域名
+_DEFAULT_BASE = "https://dashscope.aliyuncs.com"
 
-# DashScope 原生 API 地址（图像生成等非 OpenAI 兼容接口）
-DASHSCOPE_API_BASE = os.getenv(
-    "DASHSCOPE_API_BASE",
-    "https://dashscope.aliyuncs.com",
-)
+# 运行时 base URL（由 CLI 入口根据参数/环境变量初始化）
+_base_url: str = os.getenv("DASHSCOPE_BASE_URL", _DEFAULT_BASE)
 
 # 各类模型的默认值
 DEFAULT_CHAT_MODEL = "qwen-plus"
@@ -24,6 +18,30 @@ DEFAULT_TTS_MODEL = "cosyvoice-v1"
 DEFAULT_TTS_VOICE = "longxiaochun"
 DEFAULT_STT_MODEL = "paraformer-v2"
 DEFAULT_EMBEDDING_MODEL = "text-embedding-v3"
+
+
+def init_base_url(url: str | None) -> None:
+    """初始化 base URL，同时配置 dashscope SDK 的全局地址"""
+    global _base_url
+    if url:
+        _base_url = url.rstrip("/")
+    else:
+        _base_url = os.getenv("DASHSCOPE_BASE_URL", _DEFAULT_BASE).rstrip("/")
+
+    import dashscope
+
+    dashscope.base_http_api_url = f"{_base_url}/api/v1"
+    dashscope.base_websocket_api_url = f"wss://{_base_url.split('://')[1]}/api-ws/v1/inference"
+
+
+def get_base_url() -> str:
+    """获取当前 base URL"""
+    return _base_url
+
+
+def get_openai_base_url() -> str:
+    """获取 OpenAI 兼容接口的 base URL"""
+    return f"{_base_url}/compatible-mode/v1"
 
 
 def get_api_key() -> str:

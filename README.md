@@ -190,13 +190,27 @@ bailian embedding --text "第一条" --text "第二条"
 | `true` | 网络超时、限流等临时错误 | 可以重试 |
 | `false` | 参数错误、鉴权失败等 | 换策略或报告 |
 
+## 自定义 API 地址
+
+支持通过参数或环境变量切换不同地域的百炼服务：
+
+```bash
+# 通过 CLI 参数
+bailian --base-url https://dashscope-intl.aliyuncs.com chat --message "hello"
+
+# 通过环境变量
+export DASHSCOPE_BASE_URL=https://dashscope-intl.aliyuncs.com
+bailian chat --message "hello"
+```
+
+一个 `--base-url` 统一控制所有命令（chat/vision/image/tts/stt/embedding），内部自动派发到各自端点。
+
 ## 环境变量
 
 | 变量 | 必需 | 说明 |
 |------|------|------|
 | `DASHSCOPE_API_KEY` | 是 | 百炼平台 API Key |
-| `DASHSCOPE_BASE_URL` | 否 | OpenAI 兼容 API 地址 |
-| `DASHSCOPE_API_BASE` | 否 | DashScope 原生 API 地址 |
+| `DASHSCOPE_BASE_URL` | 否 | API 地址（默认 `https://dashscope.aliyuncs.com`） |
 
 ## 开发
 
