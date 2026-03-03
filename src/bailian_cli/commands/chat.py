@@ -15,7 +15,7 @@ import click
 
 from bailian_cli.client import get_openai_client
 from bailian_cli.config import DEFAULT_CHAT_MODEL
-from bailian_cli.output import error, success
+from bailian_cli.output import error, is_retryable, success
 
 logger = logging.getLogger(__name__)
 
@@ -87,7 +87,7 @@ def chat(
     except Exception as e:
         error_msg = str(e)
         logger.exception("Chat request failed")
-        error(error_msg, code="CHAT_ERROR", retryable=_is_retryable(error_msg))
+        error(error_msg, code="CHAT_ERROR", retryable=is_retryable(error_msg))
 
 
 def _resolve_text(inline: str | None, file_path: str | None, name: str) -> str | None:
@@ -146,10 +146,3 @@ def _build_kwargs(
     if top_p is not None:
         kwargs["top_p"] = top_p
     return kwargs
-
-
-def _is_retryable(error_msg: str) -> bool:
-    """判断错误是否可重试"""
-    retryable_keywords = ["timeout", "rate limit", "429", "502", "503", "504", "connection"]
-    msg_lower = error_msg.lower()
-    return any(kw in msg_lower for kw in retryable_keywords)

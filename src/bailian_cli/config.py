@@ -1,8 +1,6 @@
 """配置管理：环境变量读取、默认值、全局状态"""
 
-import json
 import os
-import sys
 
 # 百炼平台默认域名
 _DEFAULT_BASE = "https://dashscope.aliyuncs.com"
@@ -34,32 +32,21 @@ def init_base_url(url: str | None) -> None:
     dashscope.base_websocket_api_url = f"wss://{_base_url.split('://')[1]}/api-ws/v1/inference"
 
 
-def get_base_url() -> str:
-    """获取当前 base URL"""
-    return _base_url
-
-
 def get_openai_base_url() -> str:
     """获取 OpenAI 兼容接口的 base URL"""
     return f"{_base_url}/compatible-mode/v1"
 
 
 def get_api_key() -> str:
-    """获取 API Key，未配置时输出结构化错误"""
+    """获取 API Key，未配置时通过 output.error 输出结构化错误"""
     key = os.getenv("DASHSCOPE_API_KEY", "")
     if not key:
-        print(
-            json.dumps(
-                {
-                    "status": "error",
-                    "code": "API_KEY_MISSING",
-                    "message": "DASHSCOPE_API_KEY environment variable is not set",
-                    "retryable": False,
-                    "hint": "export DASHSCOPE_API_KEY='your-api-key'",
-                },
-                ensure_ascii=False,
-                indent=2,
-            )
+        from bailian_cli.output import error
+
+        error(
+            "DASHSCOPE_API_KEY environment variable is not set",
+            code="API_KEY_MISSING",
+            retryable=False,
+            hint="export DASHSCOPE_API_KEY='your-api-key'",
         )
-        sys.exit(1)
     return key

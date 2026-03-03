@@ -46,3 +46,12 @@ def error(message: str, code: str = "ERROR", retryable: bool = False, **extra: A
     result.update(extra)
     print(json.dumps(result, ensure_ascii=False, indent=2))
     sys.exit(1)
+
+
+_RETRYABLE_KEYWORDS = ["timeout", "rate limit", "429", "502", "503", "504", "connection"]
+
+
+def is_retryable(error_msg: str) -> bool:
+    """判断错误是否可重试（网络/限流类 vs 参数/鉴权类）"""
+    msg_lower = error_msg.lower()
+    return any(kw in msg_lower for kw in _RETRYABLE_KEYWORDS)

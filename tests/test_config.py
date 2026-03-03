@@ -22,6 +22,7 @@ class TestConfig:
         assert output["status"] == "error"
         assert output["code"] == "API_KEY_MISSING"
         assert output["retryable"] is False
+        assert "command" in output
 
     @patch.dict("os.environ", {}, clear=True)
     def test_get_api_key_missing(self, capsys):
@@ -30,6 +31,7 @@ class TestConfig:
         captured = capsys.readouterr()
         output = json.loads(captured.out)
         assert output["status"] == "error"
+        assert "command" in output
 
 
 class TestBaseUrl:

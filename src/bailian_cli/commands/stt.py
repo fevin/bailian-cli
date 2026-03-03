@@ -12,7 +12,7 @@ import httpx
 from dashscope import Transcription
 
 from bailian_cli.config import DEFAULT_STT_MODEL, get_api_key
-from bailian_cli.output import error, success
+from bailian_cli.output import error, is_retryable, success
 
 logger = logging.getLogger(__name__)
 
@@ -74,7 +74,7 @@ def stt(
         raise
     except Exception as e:
         logger.exception("STT request failed")
-        error(str(e), code="STT_ERROR", retryable=_is_retryable(str(e)))
+        error(str(e), code="STT_ERROR", retryable=is_retryable(str(e)))
 
 
 def _resolve_transcriptions(results: list[dict]) -> list[dict]:
@@ -117,8 +117,3 @@ def _fetch_transcription(url: str) -> dict | None:
     except Exception:
         logger.warning("Failed to fetch transcription from %s", url)
         return None
-
-
-def _is_retryable(msg: str) -> bool:
-    msg_lower = msg.lower()
-    return any(kw in msg_lower for kw in ["timeout", "connection", "rate limit", "429", "502", "503"])

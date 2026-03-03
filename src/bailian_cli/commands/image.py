@@ -6,7 +6,7 @@ import click
 from dashscope import ImageSynthesis
 
 from bailian_cli.config import DEFAULT_IMAGE_MODEL, get_api_key
-from bailian_cli.output import error, success
+from bailian_cli.output import error, is_retryable, success
 
 logger = logging.getLogger(__name__)
 
@@ -66,9 +66,4 @@ def image(
         raise
     except Exception as e:
         logger.exception("Image generation failed")
-        error(str(e), code="IMAGE_ERROR", retryable=_is_retryable(str(e)))
-
-
-def _is_retryable(msg: str) -> bool:
-    msg_lower = msg.lower()
-    return any(kw in msg_lower for kw in ["timeout", "connection", "rate limit", "429", "502", "503"])
+        error(str(e), code="IMAGE_ERROR", retryable=is_retryable(str(e)))

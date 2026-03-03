@@ -12,7 +12,7 @@ from dashscope.audio.tts_v2 import SpeechSynthesizer
 from dashscope.audio.tts_v2.speech_synthesizer import AudioFormat
 
 from bailian_cli.config import DEFAULT_TTS_MODEL, DEFAULT_TTS_VOICE, get_api_key
-from bailian_cli.output import error, success
+from bailian_cli.output import error, is_retryable, success
 
 logger = logging.getLogger(__name__)
 
@@ -71,7 +71,7 @@ def tts(
         raise
     except Exception as e:
         logger.exception("TTS request failed")
-        error(str(e), code="TTS_ERROR", retryable=_is_retryable(str(e)))
+        error(str(e), code="TTS_ERROR", retryable=is_retryable(str(e)))
 
 
 def _resolve_text(text: str | None, text_file: str | None) -> str:
@@ -87,8 +87,3 @@ def _resolve_text(text: str | None, text_file: str | None) -> str:
         return text
     error("Must provide --text or --text-file", code="INVALID_ARGS", retryable=False)
     return ""
-
-
-def _is_retryable(msg: str) -> bool:
-    msg_lower = msg.lower()
-    return any(kw in msg_lower for kw in ["timeout", "connection", "rate limit", "429", "502", "503"])

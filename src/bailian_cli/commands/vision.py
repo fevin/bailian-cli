@@ -9,7 +9,7 @@ import click
 
 from bailian_cli.client import get_openai_client
 from bailian_cli.config import DEFAULT_VISION_MODEL
-from bailian_cli.output import error, success
+from bailian_cli.output import error, is_retryable, success
 
 logger = logging.getLogger(__name__)
 
@@ -69,9 +69,8 @@ def vision(
     except FileNotFoundError as e:
         error(str(e), code="FILE_NOT_FOUND", retryable=False)
     except Exception as e:
-        retryable = "timeout" in str(e).lower() or "connection" in str(e).lower()
         logger.exception("Vision request failed")
-        error(str(e), code="VISION_ERROR", retryable=retryable)
+        error(str(e), code="VISION_ERROR", retryable=is_retryable(str(e)))
 
 
 def _build_content(message: str, images: tuple[str, ...]) -> list[dict]:
