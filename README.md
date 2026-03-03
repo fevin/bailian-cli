@@ -12,18 +12,28 @@
 - **`retryable` 提示** — 错误信息标注是否可重试，Agent 可据此决策
 - **无二进制污染** — TTS 等音频输出必须指定文件路径，stdout 保持纯 JSON
 
-## 快速开始
-
-### 安装
+## 一键安装
 
 ```bash
-# 使用 uv 安装（推荐）
-uv tool install .
+curl -fsSL https://raw.githubusercontent.com/fevin/bailian-cli/main/install.sh | bash
+```
 
-# 或使用 pip 安装
-pip install .
+脚本会自动检测 uv / pipx / pip，选择最佳方式安装。如果都没有，会先安装 uv 再安装。
 
-# 开发模式
+### 其他安装方式
+
+```bash
+# uv（推荐，自动隔离环境）
+uv tool install git+https://github.com/fevin/bailian-cli.git
+
+# pipx（同样隔离环境）
+pipx install git+https://github.com/fevin/bailian-cli.git
+
+# pip
+pip install git+https://github.com/fevin/bailian-cli.git
+
+# 本地开发
+git clone https://github.com/fevin/bailian-cli.git && cd bailian-cli
 uv sync --extra dev
 ```
 
