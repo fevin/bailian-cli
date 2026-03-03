@@ -1,6 +1,8 @@
 """语音合成命令：调用 CosyVoice / Qwen-TTS 进行文本转语音
 
-Agent 模式下 --output 必须指定，确保 stdout 始终为结构化 JSON。
+Agent 模式：
+  --text "短文本" 或 --text-file article.txt 传入待合成内容
+  --output 必须指定，确保 stdout 始终为结构化 JSON
 """
 
 import logging
@@ -24,14 +26,16 @@ TTS_PATH = "/api/v1/services/aigc/multimodal-generation/generation"
 
 @click.command()
 @click.option("-m", "--model", default=DEFAULT_TTS_MODEL, show_default=True, help="语音合成模型")
-@click.option("--text", required=True, help="待合成的文本内容")
+@click.option("--text", default=None, help="待合成的文本内容")
+@click.option("--text-file", default=None, type=click.Path(), help="从文件读取待合成文本（纯文本）")
 @click.option("--voice", default=DEFAULT_TTS_VOICE, show_default=True, help="音色名称")
 @click.option("--format", "audio_format", default="mp3", show_default=True, help="音频格式 (mp3/wav/pcm)")
 @click.option("--output", "output_path", required=True, help="音频输出文件路径")
 @click.option("--sample-rate", type=int, default=22050, show_default=True, help="采样率")
 def tts(
     model: str,
-    text: str,
+    text: str | None,
+    text_file: str | None,
     voice: str,
     audio_format: str,
     output_path: str,
@@ -39,11 +43,12 @@ def tts(
 ):
     """语音合成 - 将文本转换为语音文件"""
     try:
+        content = _resolve_text(text, text_file)
         api_key = get_api_key()
 
         payload = {
             "model": model,
-            "input": {"messages": [{"role": "user", "content": [{"text": text}]}]},
+            "input": {"messages": [{"role": "user", "content": [{"text": content}]}]},
             "parameters": {
                 "voice": voice,
                 "format": audio_format,
@@ -102,6 +107,21 @@ def tts(
         retryable = "timeout" in str(e).lower() or "connection" in str(e).lower()
         logger.exception("TTS request failed")
         error(str(e), code="TTS_ERROR", retryable=retryable)
+
+
+def _resolve_text(text: str | None, text_file: str | None) -> str:
+    """从直接文本或文件路径解析内容"""
+    if text and text_file:
+        error("Cannot use both --text and --text-file", code="INVALID_ARGS", retryable=False)
+    if text_file:
+        p = Path(text_file)
+        if not p.exists():
+            error(f"File not found: {text_file}", code="FILE_NOT_FOUND", retryable=False)
+        return p.read_text(encoding="utf-8").strip()
+    if text:
+        return text
+    error("Must provide --text or --text-file", code="INVALID_ARGS", retryable=False)
+    return ""  # unreachable, for type checker
 
 
 def _extract_audio_url(data: dict) -> str | None:

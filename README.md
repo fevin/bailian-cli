@@ -2,16 +2,14 @@
 
 阿里云百炼平台命令行工具 —— 为 AI Agent 设计的模型调用接口。
 
-通过命令行调用百炼平台的各类 AI 模型，输出结构化 JSON 结果，支持文本对话、视觉理解、图像生成、语音合成、语音识别、文本向量化。
-
 ## 设计理念
 
 本工具专为 **AI Agent 工具调用**场景设计：
 
+- **直接传内容本身** — 文本直接传字符串，文件内容传路径由 CLI 读取，不要求 Agent 构造中间格式
 - **结构化 JSON 输出** — 所有命令的 stdout 均为可解析的 JSON（包括错误）
 - **`command` 标识** — 输出中包含命令名，Agent 可关联请求与响应
 - **`retryable` 提示** — 错误信息标注是否可重试，Agent 可据此决策
-- **文件/管道输入** — 复杂多轮对话通过 `--input-file` 传入，避免 shell 转义
 - **无二进制污染** — TTS 等音频输出必须指定文件路径，stdout 保持纯 JSON
 
 ## 快速开始
@@ -48,88 +46,98 @@ API Key 从 [百炼控制台 - 密钥管理](https://bailian.console.aliyun.com/
 | `stt` | 语音识别 | paraformer-v2 |
 | `embedding` | 文本向量化 | text-embedding-v3 |
 
+## 输入设计
+
+每个参数接受**内容本身最自然的形态**：
+
+| 内容类型 | 直接传值 | 从文件读取 | 说明 |
+|---------|---------|-----------|------|
+| 用户消息 | `--message "文本"` | `--message-file doc.txt` | CLI 读取纯文本 |
+| 系统提示 | `--system "文本"` | `--system-file prompt.txt` | CLI 读取纯文本 |
+| 图片 | `--image url` | `--image ./photo.png` | 本地路径自动 base64 编码 |
+| 音频 | `--audio url` | `--audio ./recording.wav` | 本地文件自动上传 |
+| 对话历史 | — | `--history history.json` | 仅此项需要 JSON（因为本身是结构化数据） |
+
 ## 使用示例
 
 ### 文本对话
 
 ```bash
-# 简单对话
+# 直接传消息文本
 bailian chat --message "什么是量子计算？"
 
-# 指定模型和系统提示词
-bailian chat -m qwen-max --system "你是一个翻译助手" --message "Translate: 你好"
+# 从文件读取消息（适合长文本，Agent 只需传文件路径）
+bailian chat --message-file /path/to/document.txt
+
+# 从文件读取系统提示词
+bailian chat --system-file /path/to/prompt.txt --message "hello"
+
+# 直接传系统提示词
+bailian chat -m qwen-max --system "你是翻译助手" --message "Translate: 你好"
 
 # 参数控制
 bailian chat --message "hello" --temperature 0.7 --max-tokens 1024
 
-# 多轮对话 —— 通过文件输入（推荐，避免 shell 转义问题）
-cat > /tmp/messages.json << 'EOF'
+# 多轮对话：历史 + 当前消息
+bailian chat --history /path/to/history.json --message "继续上面的话题"
+
+# 多轮 + 系统提示
+bailian chat --system "Be helpful" --history history.json --message "next question"
+```
+
+`history.json` 内容（唯一需要 JSON 的地方，因为对话历史本身就是结构化的）：
+```json
 [
   {"role": "user", "content": "hi"},
   {"role": "assistant", "content": "hello"},
-  {"role": "user", "content": "how are you?"}
+  {"role": "user", "content": "how are you?"},
+  {"role": "assistant", "content": "I'm fine"}
 ]
-EOF
-bailian chat --input-file /tmp/messages.json
-
-# 多轮对话 —— 对象格式（可包含 system 提示词）
-cat > /tmp/conversation.json << 'EOF'
-{
-  "system": "You are a helpful translator",
-  "messages": [
-    {"role": "user", "content": "translate: hello world"}
-  ]
-}
-EOF
-bailian chat --input-file /tmp/conversation.json
-
-# 多轮对话 —— 通过管道输入
-echo '[{"role":"user","content":"hi"}]' | bailian chat --input-file -
 ```
 
 ### 视觉理解
 
 ```bash
-# 分析网络图片
+# 网络图片
 bailian vision --message "描述这张图片" --image https://example.com/image.jpg
 
-# 分析本地图片
+# 本地图片（CLI 自动 base64 编码，Agent 只需传路径）
 bailian vision --message "图中有什么？" --image ./photo.png
 
-# 多张图片对比
+# 多张图片
 bailian vision --message "这两张图有什么区别？" --image img1.jpg --image img2.jpg
 ```
 
 ### 图像生成
 
 ```bash
-# 生成图片（模型自动选择同步/异步模式）
+# 生成图片
 bailian image --prompt "一只在月光下奔跑的白猫"
 
-# 指定新模型（wan2.6 自动使用同步模式）
-bailian image -m wan2.6-image --prompt "futuristic city"
-
-# 自定义尺寸
-bailian image --prompt "mountain landscape" --size "1280*720"
+# 指定模型和尺寸
+bailian image -m wan2.6-image --prompt "futuristic city" --size "1280*720"
 ```
 
 ### 语音合成
 
 ```bash
-# 语音合成（必须指定输出文件）
+# 直接传文本
 bailian tts --text "你好，欢迎使用百炼平台" --output hello.mp3
 
+# 从文件读取长文本
+bailian tts --text-file /path/to/article.txt --output article.mp3
+
 # 指定音色和格式
-bailian tts --text "Hello world" --voice longxiaochun --format wav --output hello.wav
+bailian tts --text "Hello" --voice longxiaochun --format wav --output hello.wav
 ```
 
 ### 语音识别
 
 ```bash
-# 识别网络音频
+# 网络音频
 bailian stt --audio https://example.com/audio.wav
 
-# 识别本地音频
+# 本地音频（CLI 自动上传，Agent 只需传路径）
 bailian stt --audio ./recording.wav --language zh
 ```
 
@@ -141,14 +149,9 @@ bailian embedding --text "量子计算的基本原理"
 
 # 多条文本
 bailian embedding --text "第一条" --text "第二条"
-
-# 指定维度
-bailian embedding --text "hello" --dimensions 512
 ```
 
 ## 输出格式
-
-所有命令均返回统一的 JSON 结构到 stdout：
 
 ### 成功
 
@@ -182,10 +185,8 @@ bailian embedding --text "hello" --dimensions 512
 }
 ```
 
-**`retryable` 字段**：
-
-| 值 | 含义 | Agent 策略 |
-|----|------|-----------|
+| `retryable` | 含义 | Agent 策略 |
+|-------------|------|-----------|
 | `true` | 网络超时、限流等临时错误 | 可以重试 |
 | `false` | 参数错误、鉴权失败等 | 换策略或报告 |
 

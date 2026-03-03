@@ -1,14 +1,15 @@
 """文本对话命令：调用 OpenAI 兼容的 chat/completions 接口
 
-Agent 输入方式:
-  1. 简单: --message "问题"
-  2. 多轮: --input-file messages.json  (文件内容为 messages 数组)
-  3. 管道: echo '[...]' | bailian chat --input-file -  (从 stdin 读取)
+输入设计原则：参数接受内容本身的自然形态，不要求 Agent 构造中间格式。
+  --message "文本"          直接传文本
+  --message-file path.txt   传文件路径，CLI 读取纯文本内容
+  --system / --system-file   同上
+  --history history.json     仅多轮场景需要结构化数据
 """
 
 import json
 import logging
-import sys
+from pathlib import Path
 
 import click
 
@@ -21,33 +22,44 @@ logger = logging.getLogger(__name__)
 
 @click.command()
 @click.option("-m", "--model", default=DEFAULT_CHAT_MODEL, show_default=True, help="模型名称")
-@click.option("--message", default=None, help="用户消息内容（简单单轮对话）")
+@click.option("--message", default=None, help="用户消息文本")
+@click.option("--message-file", default=None, type=click.Path(), help="从文件读取用户消息（纯文本）")
 @click.option("--system", default=None, help="系统提示词")
+@click.option("--system-file", default=None, type=click.Path(), help="从文件读取系统提示词（纯文本）")
+@click.option(
+    "--history",
+    default=None,
+    type=click.Path(),
+    help="多轮对话历史文件（JSON 数组: [{role,content},...]）",
+)
 @click.option("--temperature", type=float, default=None, help="采样温度 (0-2)")
 @click.option("--max-tokens", type=int, default=None, help="最大生成 token 数")
 @click.option("--top-p", type=float, default=None, help="Top-p 采样参数")
-@click.option(
-    "--input-file",
-    type=click.Path(),
-    default=None,
-    help='消息 JSON 文件路径（- 表示 stdin），内容为 messages 数组或 {"messages":[...]} 对象',
-)
 def chat(
     model: str,
     message: str | None,
+    message_file: str | None,
     system: str | None,
+    system_file: str | None,
+    history: str | None,
     temperature: float | None,
     max_tokens: int | None,
     top_p: float | None,
-    input_file: str | None,
 ):
     """文本对话 - 调用大语言模型进行文本生成"""
     try:
-        if not message and not input_file:
-            error("Must provide --message or --input-file", code="INVALID_ARGS", retryable=False)
+        user_content = _resolve_text(message, message_file, "message")
+        if not user_content and not history:
+            error(
+                "Must provide --message/--message-file or --history",
+                code="INVALID_ARGS",
+                retryable=False,
+            )
+
+        system_content = _resolve_text(system, system_file, "system")
 
         client = get_openai_client()
-        messages = _build_messages(system, message, input_file)
+        messages = _build_messages(system_content, user_content, history)
         kwargs = _build_kwargs(model, messages, temperature, max_tokens, top_p)
 
         logger.info("Calling chat model=%s, messages_count=%d", model, len(messages))
@@ -70,51 +82,52 @@ def chat(
     except SystemExit:
         raise
     except json.JSONDecodeError as e:
-        logger.exception("Failed to parse input JSON")
-        error(f"Invalid JSON in input: {e}", code="INVALID_INPUT", retryable=False)
+        logger.exception("Failed to parse history JSON")
+        error(f"Invalid JSON in --history: {e}", code="INVALID_INPUT", retryable=False)
     except Exception as e:
         error_msg = str(e)
-        retryable = _is_retryable(error_msg)
         logger.exception("Chat request failed")
-        error(error_msg, code="CHAT_ERROR", retryable=retryable)
+        error(error_msg, code="CHAT_ERROR", retryable=_is_retryable(error_msg))
 
 
-def _build_messages(system: str | None, message: str | None, input_file: str | None) -> list[dict]:
+def _resolve_text(inline: str | None, file_path: str | None, name: str) -> str | None:
+    """从直接文本或文件路径解析内容，二者只能选一"""
+    if inline and file_path:
+        error(f"Cannot use both --{name} and --{name}-file", code="INVALID_ARGS", retryable=False)
+    if file_path:
+        p = Path(file_path)
+        if not p.exists():
+            error(f"File not found: {file_path}", code="FILE_NOT_FOUND", retryable=False)
+        return p.read_text(encoding="utf-8").strip()
+    return inline
+
+
+def _build_messages(
+    system_content: str | None,
+    user_content: str | None,
+    history_path: str | None,
+) -> list[dict]:
     """构建消息列表
 
-    优先级: input_file > message
-    input_file 支持两种格式:
-      - 纯数组: [{"role":"user","content":"hi"}]
-      - 对象包装: {"messages":[...], "system":"可选系统提示词"}
+    组装顺序: system → history → user_content
+    history 为纯对话历史，user_content 追加为当前轮用户消息。
     """
-    if input_file:
-        raw = _read_input(input_file)
-        data = json.loads(raw)
-        if isinstance(data, list):
-            messages = data
-        elif isinstance(data, dict) and "messages" in data:
-            messages = data["messages"]
-            if not system and data.get("system"):
-                system = data["system"]
-        else:
-            raise ValueError('input-file must contain a JSON array or {"messages":[...]} object')
-    elif message:
-        messages = [{"role": "user", "content": message}]
-    else:
-        messages = []
+    messages: list[dict] = []
 
-    if system:
-        messages.insert(0, {"role": "system", "content": system})
+    if system_content:
+        messages.append({"role": "system", "content": system_content})
+
+    if history_path:
+        raw = Path(history_path).read_text(encoding="utf-8")
+        history_data = json.loads(raw)
+        if not isinstance(history_data, list):
+            raise ValueError("--history file must contain a JSON array of messages")
+        messages.extend(history_data)
+
+    if user_content:
+        messages.append({"role": "user", "content": user_content})
 
     return messages
-
-
-def _read_input(path: str) -> str:
-    """从文件或 stdin 读取"""
-    if path == "-":
-        return sys.stdin.read()
-    with open(path) as f:
-        return f.read()
 
 
 def _build_kwargs(
@@ -136,7 +149,7 @@ def _build_kwargs(
 
 
 def _is_retryable(error_msg: str) -> bool:
-    """判断错误是否可重试（网络/限流类 vs 参数/鉴权类）"""
+    """判断错误是否可重试"""
     retryable_keywords = ["timeout", "rate limit", "429", "502", "503", "504", "connection"]
     msg_lower = error_msg.lower()
     return any(kw in msg_lower for kw in retryable_keywords)

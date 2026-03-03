@@ -36,9 +36,10 @@ class TestHelpOutput:
         runner = CliRunner()
         result = runner.invoke(main, ["chat", "--help"])
         assert result.exit_code == 0
-        assert "--message" in result.output
-        assert "--input-file" in result.output
-        assert "--model" in result.output
+        assert "--message " in result.output
+        assert "--message-file" in result.output
+        assert "--system-file" in result.output
+        assert "--history" in result.output
 
     def test_vision_help(self):
         runner = CliRunner()
@@ -56,7 +57,8 @@ class TestHelpOutput:
         runner = CliRunner()
         result = runner.invoke(main, ["tts", "--help"])
         assert result.exit_code == 0
-        assert "--text" in result.output
+        assert "--text " in result.output
+        assert "--text-file" in result.output
         assert "--output" in result.output
 
     def test_stt_help(self):
@@ -84,7 +86,7 @@ class TestChatCommand:
     @patch("bailian_cli.commands.chat.get_openai_client")
     @patch.dict("os.environ", {"DASHSCOPE_API_KEY": "test-key"})
     def test_chat_with_message(self, mock_get_client):
-        """--message 简单对话"""
+        """--message 直接传文本"""
         mock_client = MagicMock()
         mock_get_client.return_value = mock_client
         _setup_chat_response(mock_client, "Hello from AI")
@@ -101,8 +103,50 @@ class TestChatCommand:
 
     @patch("bailian_cli.commands.chat.get_openai_client")
     @patch.dict("os.environ", {"DASHSCOPE_API_KEY": "test-key"})
+    def test_chat_with_message_file(self, mock_get_client):
+        """--message-file 从纯文本文件读消息"""
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+        _setup_chat_response(mock_client, "Summary here")
+
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False) as f:
+            f.write("This is a long document that needs summarizing...")
+            f.flush()
+
+            runner = CliRunner()
+            result = runner.invoke(main, ["chat", "--message-file", f.name])
+
+        assert result.exit_code == 0
+        call_kwargs = mock_client.chat.completions.create.call_args
+        messages = call_kwargs.kwargs["messages"]
+        assert messages[0]["role"] == "user"
+        assert "long document" in messages[0]["content"]
+
+    @patch("bailian_cli.commands.chat.get_openai_client")
+    @patch.dict("os.environ", {"DASHSCOPE_API_KEY": "test-key"})
+    def test_chat_with_system_file(self, mock_get_client):
+        """--system-file 从纯文本文件读系统提示词"""
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+        _setup_chat_response(mock_client, "Translated")
+
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False) as f:
+            f.write("You are a professional translator.")
+            f.flush()
+
+            runner = CliRunner()
+            result = runner.invoke(main, ["chat", "--system-file", f.name, "--message", "hello"])
+
+        assert result.exit_code == 0
+        call_kwargs = mock_client.chat.completions.create.call_args
+        messages = call_kwargs.kwargs["messages"]
+        assert messages[0]["role"] == "system"
+        assert "translator" in messages[0]["content"]
+
+    @patch("bailian_cli.commands.chat.get_openai_client")
+    @patch.dict("os.environ", {"DASHSCOPE_API_KEY": "test-key"})
     def test_chat_with_system(self, mock_get_client):
-        """--system 系统提示词"""
+        """--system 直接传系统提示词"""
         mock_client = MagicMock()
         mock_get_client.return_value = mock_client
         _setup_chat_response(mock_client, "I am a translator")
@@ -112,83 +156,98 @@ class TestChatCommand:
         assert result.exit_code == 0
 
         call_kwargs = mock_client.chat.completions.create.call_args
-        messages = call_kwargs.kwargs.get("messages") or call_kwargs[1].get("messages")
+        messages = call_kwargs.kwargs["messages"]
         assert messages[0]["role"] == "system"
         assert messages[0]["content"] == "You are a translator"
 
     @patch("bailian_cli.commands.chat.get_openai_client")
     @patch.dict("os.environ", {"DASHSCOPE_API_KEY": "test-key"})
-    def test_chat_with_input_file(self, mock_get_client):
-        """--input-file 多轮对话"""
+    def test_chat_with_history(self, mock_get_client):
+        """--history 多轮对话历史 + --message 当前轮"""
         mock_client = MagicMock()
         mock_get_client.return_value = mock_client
         _setup_chat_response(mock_client, "Fine, thanks!")
 
-        messages_data = [
+        history_data = [
             {"role": "user", "content": "hi"},
             {"role": "assistant", "content": "hello"},
-            {"role": "user", "content": "how are you?"},
         ]
 
         with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
-            json.dump(messages_data, f)
+            json.dump(history_data, f)
             f.flush()
+
             runner = CliRunner()
-            result = runner.invoke(main, ["chat", "--input-file", f.name])
+            result = runner.invoke(main, ["chat", "--history", f.name, "--message", "how are you?"])
 
         assert result.exit_code == 0
         call_kwargs = mock_client.chat.completions.create.call_args
-        messages = call_kwargs.kwargs.get("messages") or call_kwargs[1].get("messages")
+        messages = call_kwargs.kwargs["messages"]
         assert len(messages) == 3
+        assert messages[0]["content"] == "hi"
+        assert messages[1]["content"] == "hello"
         assert messages[2]["content"] == "how are you?"
 
     @patch("bailian_cli.commands.chat.get_openai_client")
     @patch.dict("os.environ", {"DASHSCOPE_API_KEY": "test-key"})
-    def test_chat_with_input_file_object_format(self, mock_get_client):
-        """--input-file 对象格式 {messages, system}"""
+    def test_chat_history_with_system(self, mock_get_client):
+        """--history + --system 组合"""
         mock_client = MagicMock()
         mock_get_client.return_value = mock_client
-        _setup_chat_response(mock_client, "翻译结果")
+        _setup_chat_response(mock_client, "OK")
 
-        input_data = {
-            "system": "You are a translator",
-            "messages": [{"role": "user", "content": "translate: hello"}],
-        }
+        history = [{"role": "user", "content": "prev"}, {"role": "assistant", "content": "resp"}]
 
         with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
-            json.dump(input_data, f)
+            json.dump(history, f)
             f.flush()
+
             runner = CliRunner()
-            result = runner.invoke(main, ["chat", "--input-file", f.name])
+            result = runner.invoke(
+                main,
+                ["chat", "--system", "Be helpful", "--history", f.name, "--message", "next"],
+            )
 
         assert result.exit_code == 0
         call_kwargs = mock_client.chat.completions.create.call_args
-        messages = call_kwargs.kwargs.get("messages") or call_kwargs[1].get("messages")
+        messages = call_kwargs.kwargs["messages"]
         assert messages[0]["role"] == "system"
-        assert messages[1]["content"] == "translate: hello"
-
-    @patch("bailian_cli.commands.chat.get_openai_client")
-    @patch.dict("os.environ", {"DASHSCOPE_API_KEY": "test-key"})
-    def test_chat_input_file_stdin(self, mock_get_client):
-        """--input-file - 从 stdin 读取"""
-        mock_client = MagicMock()
-        mock_get_client.return_value = mock_client
-        _setup_chat_response(mock_client, "response")
-
-        stdin_data = json.dumps([{"role": "user", "content": "from stdin"}])
-        runner = CliRunner()
-        result = runner.invoke(main, ["chat", "--input-file", "-"], input=stdin_data)
-        assert result.exit_code == 0
+        assert messages[1]["role"] == "user"
+        assert messages[1]["content"] == "prev"
+        assert messages[3]["content"] == "next"
 
     @patch.dict("os.environ", {"DASHSCOPE_API_KEY": "test-key"})
     def test_chat_no_message_no_file(self):
-        """既没有 --message 也没有 --input-file 应报错"""
+        """既没有 --message 也没有 --message-file 应报错"""
         runner = CliRunner()
         result = runner.invoke(main, ["chat"])
         assert result.exit_code != 0
         output = json.loads(result.output)
         assert output["status"] == "error"
         assert output["code"] == "INVALID_ARGS"
+
+    @patch.dict("os.environ", {"DASHSCOPE_API_KEY": "test-key"})
+    def test_chat_message_and_file_conflict(self):
+        """--message 和 --message-file 互斥"""
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False) as f:
+            f.write("content")
+            f.flush()
+
+            runner = CliRunner()
+            result = runner.invoke(main, ["chat", "--message", "hello", "--message-file", f.name])
+
+        assert result.exit_code != 0
+        output = json.loads(result.output)
+        assert output["code"] == "INVALID_ARGS"
+
+    @patch.dict("os.environ", {"DASHSCOPE_API_KEY": "test-key"})
+    def test_chat_message_file_not_found(self):
+        """--message-file 文件不存在"""
+        runner = CliRunner()
+        result = runner.invoke(main, ["chat", "--message-file", "/nonexistent/file.txt"])
+        assert result.exit_code != 0
+        output = json.loads(result.output)
+        assert output["code"] == "FILE_NOT_FOUND"
 
 
 class TestOutputStructure:
