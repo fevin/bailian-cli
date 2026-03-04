@@ -221,6 +221,13 @@ bailian chat --message "hello"
 |------|------|------|
 | `DASHSCOPE_API_KEY` | 是 | 百炼平台 API Key |
 | `DASHSCOPE_BASE_URL` | 否 | API 地址（默认 `https://dashscope.aliyuncs.com`） |
+| `BAILIAN_CHAT_MODEL` | 否 | chat 命令默认模型（默认 `qwen-plus`） |
+| `BAILIAN_VISION_MODEL` | 否 | vision 命令默认模型（默认 `qwen-vl-max`） |
+| `BAILIAN_IMAGE_MODEL` | 否 | image 命令默认模型（默认 `wanx2.1-t2i-turbo`） |
+| `BAILIAN_TTS_MODEL` | 否 | tts 命令默认模型（默认 `cosyvoice-v1`） |
+| `BAILIAN_TTS_VOICE` | 否 | tts 命令默认音色（默认 `longxiaochun`） |
+| `BAILIAN_STT_MODEL` | 否 | stt 命令默认模型（默认 `paraformer-v2`） |
+| `BAILIAN_EMBEDDING_MODEL` | 否 | embedding 命令默认模型（默认 `text-embedding-v3`） |
 
 ## Agent Skills
 

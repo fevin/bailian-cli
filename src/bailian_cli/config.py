@@ -8,14 +8,14 @@ _DEFAULT_BASE = "https://dashscope.aliyuncs.com"
 # 运行时 base URL（由 CLI 入口根据参数/环境变量初始化）
 _base_url: str = os.getenv("DASHSCOPE_BASE_URL", _DEFAULT_BASE)
 
-# 各类模型的默认值
-DEFAULT_CHAT_MODEL = "qwen-plus"
-DEFAULT_VISION_MODEL = "qwen-vl-max"
-DEFAULT_IMAGE_MODEL = "wanx2.1-t2i-turbo"
-DEFAULT_TTS_MODEL = "cosyvoice-v1"
-DEFAULT_TTS_VOICE = "longxiaochun"
-DEFAULT_STT_MODEL = "paraformer-v2"
-DEFAULT_EMBEDDING_MODEL = "text-embedding-v3"
+# 各类模型的默认值，支持通过环境变量覆盖
+DEFAULT_CHAT_MODEL = os.getenv("BAILIAN_CHAT_MODEL", "qwen-plus")
+DEFAULT_VISION_MODEL = os.getenv("BAILIAN_VISION_MODEL", "qwen-vl-max")
+DEFAULT_IMAGE_MODEL = os.getenv("BAILIAN_IMAGE_MODEL", "wanx2.1-t2i-turbo")
+DEFAULT_TTS_MODEL = os.getenv("BAILIAN_TTS_MODEL", "cosyvoice-v1")
+DEFAULT_TTS_VOICE = os.getenv("BAILIAN_TTS_VOICE", "longxiaochun")
+DEFAULT_STT_MODEL = os.getenv("BAILIAN_STT_MODEL", "paraformer-v2")
+DEFAULT_EMBEDDING_MODEL = os.getenv("BAILIAN_EMBEDDING_MODEL", "text-embedding-v3")
 
 
 def init_base_url(url: str | None) -> None:
