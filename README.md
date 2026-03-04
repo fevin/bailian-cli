@@ -222,6 +222,42 @@ bailian chat --message "hello"
 | `DASHSCOPE_API_KEY` | 是 | 百炼平台 API Key |
 | `DASHSCOPE_BASE_URL` | 否 | API 地址（默认 `https://dashscope.aliyuncs.com`） |
 
+## Agent Skills
+
+本项目同时提供 [Agent Skills](https://add-skill.org/) 技能包，可直接集成到 Cursor、Claude Code、OpenCode、Codex 等 AI 助手中。
+
+### 安装技能
+
+```bash
+# 安装（自动检测当前 Agent 环境）
+npx skills add fevin/bailian-cli
+
+# 查看可用技能
+npx skills add fevin/bailian-cli --list
+
+# 全局安装（所有项目共享）
+npx skills add fevin/bailian-cli -g
+```
+
+手动安装：
+
+```bash
+cp -r skills/bailian-ai /workspace/skills/
+```
+
+### 技能能力
+
+| 能力 | 对应命令 | 说明 |
+|------|---------|------|
+| 文本对话 | `bailian chat` | 问答、翻译、总结、写作 |
+| 视觉理解 | `bailian vision` | 图片描述、分析、OCR |
+| 图像生成 | `bailian image` | 文字描述生成图片 |
+| 语音合成 | `bailian tts` | 文字转语音文件 |
+| 语音识别 | `bailian stt` | 音频转文字 |
+| 文本向量化 | `bailian embedding` | 文本转向量表示 |
+
+技能文件位于 `skills/bailian-ai/`，详见 [SKILL.md](skills/bailian-ai/SKILL.md)。
+
 ## 开发
 
 ```bash
