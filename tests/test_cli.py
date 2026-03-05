@@ -94,6 +94,19 @@ class TestChatCommand:
         runner = CliRunner()
         result = runner.invoke(main, ["chat", "--message", "hello"])
         assert result.exit_code == 0
+        assert result.output.strip() == "Hello from AI"
+
+    @patch("bailian_cli.commands.chat.get_openai_client")
+    @patch.dict("os.environ", {"DASHSCOPE_API_KEY": "test-key"})
+    def test_chat_with_json_flag(self, mock_get_client):
+        """--json 标志输出完整结构化 JSON（含元数据）"""
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+        _setup_chat_response(mock_client, "Hello from AI")
+
+        runner = CliRunner()
+        result = runner.invoke(main, ["--json", "chat", "--message", "hello"])
+        assert result.exit_code == 0
 
         output = json.loads(result.output)
         assert output["status"] == "success"
@@ -261,7 +274,7 @@ class TestOutputStructure:
         _setup_chat_response(mock_client, "test")
 
         runner = CliRunner()
-        result = runner.invoke(main, ["chat", "--message", "hello"])
+        result = runner.invoke(main, ["--json", "chat", "--message", "hello"])
         output = json.loads(result.output)
 
         assert "command" in output

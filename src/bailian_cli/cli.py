@@ -13,7 +13,7 @@ from bailian_cli.commands.stt import stt
 from bailian_cli.commands.tts import tts
 from bailian_cli.commands.vision import vision
 from bailian_cli.config import init_base_url
-from bailian_cli.output import set_command
+from bailian_cli.output import set_command, set_json_mode
 
 
 class CommandTracker(click.Group):
@@ -32,18 +32,25 @@ class CommandTracker(click.Group):
     help="日志详细程度（-v=INFO, -vv=DEBUG）",
 )
 @click.option(
+    "--json",
+    "json_output",
+    is_flag=True,
+    default=False,
+    help="输出完整 JSON（含元数据），默认仅输出文本内容",
+)
+@click.option(
     "--base-url",
     default=None,
     envvar="DASHSCOPE_BASE_URL",
     help="百炼平台 API 地址（默认 https://dashscope.aliyuncs.com）",
 )
-def main(verbose: int, base_url: str | None):
+def main(verbose: int, json_output: bool, base_url: str | None):
     """百炼 CLI - 阿里云百炼平台命令行工具
 
     \b
-    通过命令行调用百炼平台的各类 AI 模型，输出结构化 JSON 结果。
+    通过命令行调用百炼平台的各类 AI 模型。
     支持文本对话、视觉理解、图像生成、语音合成、语音识别、文本向量化。
-    设计为 AI Agent 工具调用场景，所有输出均为结构化 JSON。
+    设计为 AI Agent 工具调用场景，默认直接输出文本内容，--json 输出完整结构化数据。
 
     \b
     环境变量:
@@ -62,6 +69,7 @@ def main(verbose: int, base_url: str | None):
         stream=sys.stderr,
     )
 
+    set_json_mode(json_output)
     init_base_url(base_url)
 
 
